@@ -10,39 +10,56 @@ from io import BytesIO
 st.set_page_config(
     page_title="Analizador Discursos",
     page_icon="📄",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="expanded",
 )
 
-def app():
 
+def app():
     gpt = GPT()
     whisper = WhisperModel()
 
-    st.title('Analizador de Discursos')
+    st.container().title('Analizador de Discursos')
 
-    st.subheader('Sube un audio en Español y obtén un resumen del discurso')
+    col1, col2 = st.columns([1, 1])
 
-    format_list = ['mp3', 'mp4', 'wav', 'm4a']
-    format_string = ', '.join(format_list)
-    audio_file = st.file_uploader(f"Sube tu Audio en formato {format_string}", type=format_list)
-    btn = st.button('Cargar Audio')
+    with col1:
+        st.subheader('Sube un audio y obtén un Análisis del discurso')
 
-    if btn:
+        format_list = ['mp3', 'mp4', 'wav', 'm4a']
+        format_string = ', '.join(format_list)
+        audio_file = st.file_uploader(f"Sube tu Audio en formato {format_string}", type=format_list)
 
-        if audio_file is None:
-            st.warning('Sube un archivo valido')
-            return
 
-        status = st.status('Creando la Transcripcion', expanded=False, state='running')
+        if audio_file is not None:
+            # Mostrar reproductor de audio
+            st.audio(audio_file)
 
-        # Llamada a la función de transcripción
-        try:
-            resultado_transcripcion = whisper.transcribe_audio(audio_file)
-            st.text_area("Texto transcrito", resultado_transcripcion, height=300)
-        except Exception as e:
-            st.error(f"Error en la transcripción: {e}")
+            if st.button('Obtener Transcripcion'):
 
+
+                with col2:
+                    status = st.status('Creando la Transcripción', expanded=False, state='running')
+
+                    # Llamada a la función de transcripción
+                    try:
+                        result_text_whisper = whisper.transcribe_audio(audio_file)
+                        status.update(label='Texto transcrito', state='complete')
+                        st.session_state['texto_transcrito'] = result_text_whisper
+                        editable_text = st.text_area("Texto Transcrito:", value=result_text_whisper, height=300, key="editable")
+
+                        if st.button("Guardar Cambios"):
+                            st.session_state['texto_transcrito'] = editable_text
+
+                        if st.button("Generar Resumen"):
+                            try:
+                                summary = gpt.summarize_text(st.session_state['texto_transcrito'])
+                                st.text_area("Resumen del Discurso:", value=summary, height=150)
+                            except Exception as e:
+                                st.error(f"Error al generar resumen: {e}")
+
+                    except Exception as e:
+                        st.error(f"Error en la transcripción: {e}")
 
 if __name__ == '__main__':
 	app()
