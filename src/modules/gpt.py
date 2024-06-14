@@ -3,10 +3,12 @@ from io import BytesIO
 import tempfile
 import os
 
+
+
 class BaseModel:
     def __init__(self):
         self.client = OpenAI()
-# esta es la nueva branch
+#
 class WhisperModel(BaseModel):
     def __init__(self):
         super().__init__()

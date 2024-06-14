@@ -1,7 +1,5 @@
 import streamlit as st
 from dotenv import load_dotenv
-
-load_dotenv()
 from modules.gpt import GPT, WhisperModel
 
 st.set_page_config(
@@ -53,4 +51,5 @@ def app():
 
 
 if __name__ == '__main__':
+    load_dotenv()
     app()
