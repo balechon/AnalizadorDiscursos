@@ -27,17 +27,3 @@ def extract_sentiment_metrics(metrics):
 
 
 
-# if __name__ == '__main__':
-#
-#     lista_prueba=[{'positive': 0.9530580043792725, 'neutral': 0.025432055816054344, 'negative': 0.021509924903512},{'positive': 0.9530580043792725, 'neutral': 0.025432055816054344, 'negative': 0.021509924903512},{'positive': 0.9530580043792725, 'neutral': 0.025432055816054344, 'negative': 0.021509924903512},{'positive': 0.9530580043792725, 'neutral': 0.025432055816054344, 'negative': 0.021509924903512}]
-#     # iput_text = input("Ingresa un texto para clasificar: ")
-#     # result = text_classifier(iput_text)
-#     # print(result)
-#     final_result = {"positive": [], "neutral": [], "negative": []}
-#     for i in lista_prueba:
-#         for key in i.keys():
-#             final_result[key].append(i[key])
-#     df = pd.DataFrame(final_result)
-#     positive_average = df['positive'].mean()
-#     print(df.head())
-#     print(positive_average)

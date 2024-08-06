@@ -2,22 +2,25 @@ import streamlit as st
 from dotenv import load_dotenv
 from modules.whisper_transcriptor import WhisperModel
 from modules.gpt import GPT
-load_dotenv()
+from modules.chatboot import RAGChatbot
 from modules.sentiment_analyzer import text_classifier, extract_sentiment_metrics
-st.set_page_config(page_title="Analizador de Discursos IA", layout="wide")
+import pandas as pd
+import plotly.express as px
+load_dotenv()
 
 # Configurar logging
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+st.set_page_config(page_title="Analizador de Discursos IA", layout="wide")
 # Inicialización de modelos
 @st.cache_resource
 def load_models():
-    return WhisperModel(), GPT()
+    return WhisperModel(), GPT(), RAGChatbot()
 
 
-whisper_model, gpt_model = load_models()
+whisper_model, gpt_model , chatbot= load_models()
 
 
 # Funciones de análisis
@@ -88,11 +91,11 @@ def main():
         with col1:
             if st.button("Subir audio"):
                 st.session_state.page = 'upload_audio'
-                st.experimental_rerun()
+                st.rerun()
         with col2:
             if st.button("Ingresar texto"):
                 st.session_state.page = 'enter_text'
-                st.experimental_rerun()
+                st.rerun()
 
     # Página de subir audio
     elif st.session_state.page == 'upload_audio':
@@ -104,30 +107,31 @@ def main():
                 with st.spinner("Transcribiendo audio..."):
                     st.session_state.text = transcribe_audio(audio_file)
                 st.session_state.page = 'analysis'
-                st.experimental_rerun()
+                st.rerun()
         if st.button("Volver al Inicio"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
-            st.experimental_rerun()
+            st.rerun()
+
+
     # Página de ingresar texto
     elif st.session_state.page == 'enter_text':
         st.subheader("Ingresa el texto de tu discurso")
         st.session_state.text = st.text_area("Texto del discurso", height=300)
         if st.button("Analizar"):
             st.session_state.page = 'analysis'
-            st.experimental_rerun()
+            st.rerun()
         if st.button("Volver al Inicio"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
-            st.experimental_rerun()
+            st.rerun()
     # Página de análisis
     elif st.session_state.page == 'analysis':
         st.sidebar.title("Secciones de Análisis")
         analysis_section = st.sidebar.radio("",
-                                            ['Resumen', 'Análisis de Sentimientos', 'Palabras Clave', 'Estadísticas',
-                                             'Chatbot IA'])
+                                            ['Resumen', 'Análisis de Sentimientos', 'Chatbot IA'])
 
         st.subheader("Texto Original")
         st.text_area("", st.session_state.text, height=150)
@@ -150,17 +154,25 @@ def main():
 
         elif analysis_section == 'Chatbot IA':
             st.subheader("Chatbot IA")
+            if 'chatbot_loaded' not in st.session_state:
+                with st.spinner("Cargando el chatbot..."):
+                    chatbot.cargar_discurso(st.session_state.text)
+                    st.session_state.chatbot_loaded = True
+
             user_question = st.text_input("Haz una pregunta sobre el discurso:")
             if user_question:
-                response = chatbot_response(user_question, st.session_state.text)
-                st.write(response)
-
+                with st.spinner("Generando respuesta..."):
+                    try:
+                        response = chatbot.responder_pregunta(user_question)
+                        st.write(response)
+                    except Exception as e:
+                        st.error(f"Error al generar la respuesta: {str(e)}")
 
         if st.sidebar.button("Volver al Inicio"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
-            st.experimental_rerun()
+            st.rerun()
 
 if __name__ == "__main__":
     main()
