@@ -4,8 +4,10 @@ from modules.whisper_transcriptor import WhisperModel
 from modules.gpt import GPT
 from modules.chatboot import RAGChatbot
 from modules.sentiment_analyzer import text_classifier, extract_sentiment_metrics
-import pandas as pd
-import plotly.express as px
+from modules.NLP_basics import normalize_text
+from modules.plots import plot_top_words
+
+
 load_dotenv()
 
 # Configurar logging
@@ -17,13 +19,13 @@ st.set_page_config(page_title="Analizador de Discursos IA", layout="wide")
 # Inicialización de modelos
 @st.cache_resource
 def load_models():
-    return WhisperModel(), GPT(), RAGChatbot()
+    return WhisperModel(), GPT()
 
 
-whisper_model, gpt_model , chatbot= load_models()
+whisper_model, gpt_model  =  load_models()
 
 
-# Funciones de análisis
+
 @st.cache_data
 def transcribe_audio(audio_file):
     return whisper_model.transcribe_audio(audio_file)
@@ -37,6 +39,7 @@ def generate_summary(text):
 def text_segmentation(text):
     return gpt_model.divide_into_ideas(text)
 
+
 @st.cache_data
 def perform_sentiment_analysis(text):
     list_sentimen_analisis = {"positive": [], "neutral": [], "negative": []}
@@ -47,11 +50,12 @@ def perform_sentiment_analysis(text):
             list_sentimen_analisis[key_sentiment].append(sentiment_scores[key_sentiment])
     return extract_sentiment_metrics(list_sentimen_analisis)
 
+@st.cache_data
+def plot_words(text):
+    return plot_top_words(text)
 
-# Función para el chatbot (simplificada)
-def chatbot_response(question, context):
-    # Aquí implementarías la lógica del chatbot
-    return f"Respuesta a: {question}\nBasada en el contexto del discurso analizado."
+
+
 
 st.markdown("""
     <style>
@@ -67,6 +71,8 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
+
+
 
 # Interfaz principal
 def main():
@@ -143,6 +149,11 @@ def main():
             st.subheader("Resumen del Discurso")
             st.write(st.session_state.summary['summary'])
 
+            normalized_text = normalize_text(st.session_state.text)
+            st.subheader("Palabras más frecuentes")
+            fig = plot_words(normalized_text)
+            st.plotly_chart(fig)
+
 
         elif analysis_section == 'Análisis de Sentimientos':
             st.subheader("Análisis de Sentimientos")
@@ -152,26 +163,72 @@ def main():
 
             st.write(st.session_state.sentiment_analysis)
 
+
         elif analysis_section == 'Chatbot IA':
             st.subheader("Chatbot IA")
-            if 'chatbot_loaded' not in st.session_state:
-                with st.spinner("Cargando el chatbot..."):
-                    chatbot.cargar_discurso(st.session_state.text)
+
+            if 'chatbot' not in st.session_state:
+                st.session_state.chatbot = RAGChatbot()
+
+
+            # Cargar el discurso en el chatbot si aún no se ha hecho
+            if ('chatbot_loaded' not in st.session_state) or (not st.session_state.chatbot_loaded):
+                with st.spinner("Cargando el discurso en el chatbot..."):
+                    st.session_state.chatbot.cargar_discurso(st.session_state.text)
                     st.session_state.chatbot_loaded = True
 
-            user_question = st.text_input("Haz una pregunta sobre el discurso:")
+            # Inicializar el historial de mensajes si no existe
+            if 'messages' not in st.session_state:
+                st.session_state.messages = []
+
+            # Mostrar el historial de mensajes
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            # Campo de entrada para la pregunta del usuario
+            user_question = st.chat_input("Haz una pregunta sobre el discurso:")
+
             if user_question:
-                with st.spinner("Generando respuesta..."):
-                    try:
-                        response = chatbot.responder_pregunta(user_question)
-                        st.write(response)
-                    except Exception as e:
-                        st.error(f"Error al generar la respuesta: {str(e)}")
+                # Añadir la pregunta del usuario al historial
+                st.session_state.messages.append({"role": "user", "content": user_question})
+                with st.chat_message("user"):
+                    st.markdown(user_question)
+
+                # Generar y mostrar la respuesta del chatbot
+                with st.chat_message("assistant"):
+                    with st.spinner("Generando respuesta..."):
+                        try:
+                            response = st.session_state.chatbot.responder_pregunta(user_question)
+                            st.markdown(response)
+                            # Añadir la respuesta del chatbot al historial
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                        except Exception as e:
+                            st.error(f"Error al generar la respuesta: {str(e)}")
+
+            # Botón para reiniciar la conversación
+            if st.button("Reiniciar conversación"):
+                st.session_state.messages = []
+                # chatbot.cerrar_sesion()
+                # st.session_state.chatbot_loaded = False
+                st.experimental_rerun()
 
         if st.sidebar.button("Volver al Inicio"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
+            # clear cache
+            if 'chatbot' in st.session_state:
+                st.session_state.chatbot.cerrar_sesion()
+            st.session_state.chatbot_loaded = False
+
+            st.cache_data.clear()
+
+            for key in ['summary', 'sentiment_analysis', 'chatbot_loaded','chatbot','messages']:
+                if key in st.session_state:
+                    del st.session_state[key]
+
+
             st.rerun()
 
 if __name__ == "__main__":
