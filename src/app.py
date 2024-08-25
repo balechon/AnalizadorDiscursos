@@ -5,7 +5,7 @@ from modules.gpt import GPT
 from modules.chatboot import RAGChatbot
 from modules.sentiment_analyzer import text_classifier, extract_sentiment_metrics
 from modules.NLP_basics import normalize_text
-from modules.plots import plot_top_words
+from modules.plots import plot_top_words,plot_overal_sentiment_score,plot_sentiment_stacked_bar,plot_sentiment_stacked_area
 
 
 load_dotenv()
@@ -48,7 +48,7 @@ def perform_sentiment_analysis(text):
         sentiment_scores = text_classifier(idea)
         for key_sentiment in list_sentimen_analisis.keys():
             list_sentimen_analisis[key_sentiment].append(sentiment_scores[key_sentiment])
-    return extract_sentiment_metrics(list_sentimen_analisis)
+    return extract_sentiment_metrics(list_sentimen_analisis), list_sentimen_analisis, ideas
 
 @st.cache_data
 def plot_words(text):
@@ -140,7 +140,9 @@ def main():
                                             ['Resumen', 'Análisis de Sentimientos', 'Chatbot IA'])
 
         st.subheader("Texto Original")
-        st.text_area("", st.session_state.text, height=150)
+        with st.expander("Expandir todo el texto"):
+            st.write(st.session_state.text)
+        # st.text_area("", st.session_state.text, height=150)
 
         if analysis_section == 'Resumen':
             if 'summary' not in st.session_state:
@@ -159,9 +161,23 @@ def main():
             st.subheader("Análisis de Sentimientos")
             if 'sentiment_analysis' not in st.session_state:
                 with st.spinner("Realizando análisis de sentimientos..."):
-                    st.session_state.sentiment_analysis = perform_sentiment_analysis(st.session_state.text)
+                    string_sentiment_result,list_sentiment_result, ideas = perform_sentiment_analysis(st.session_state.text)
+                    st.session_state.sentiment_analysis = string_sentiment_result
+                    st.session_state.ideas_sentiment_result = list_sentiment_result
+                    st.session_state.ideas = ideas
+            st.subheader("Texto dividido en Ideas")
+            with st.expander("Ver todas las ideas"):
+                for idea in st.session_state.ideas:
+                    st.write(idea)
 
-            st.write(st.session_state.sentiment_analysis)
+            overall_sentiment_fig = plot_overal_sentiment_score(st.session_state.ideas_sentiment_result)
+            ideas_sentiment_fig = plot_sentiment_stacked_bar(st.session_state.ideas_sentiment_result)
+            ideas_staked_fig = plot_sentiment_stacked_area(st.session_state.ideas_sentiment_result)
+
+            st.plotly_chart(overall_sentiment_fig)
+            st.plotly_chart(ideas_sentiment_fig)
+            st.plotly_chart(ideas_staked_fig)
+            # st.write(st.session_state.sentiment_analysis)
 
 
         elif analysis_section == 'Chatbot IA':
