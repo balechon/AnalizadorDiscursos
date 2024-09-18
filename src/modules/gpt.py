@@ -17,7 +17,7 @@ class IdeaOutputParser(BaseModel):
 
 class GPT:
     def __init__(self):
-        self.llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+        self.llm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
 
     def create_resume(self, text: str) -> dict:
         """
