@@ -1,63 +1,115 @@
 import os
-# from langchain_community.vectorstores import Chroma
-from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
-from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory, CombinedMemory
+import logging
 from langchain_openai import ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.text_splitter import CharacterTextSplitter
+from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Pinecone
+from pinecone import Pinecone as PineconeClient
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-DB_PATH = db_path = os.path.join(os.path.dirname(__file__), "./../../data")
 class RAGChatbot:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.embeddings = OpenAIEmbeddings()
-        self.text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=0)
-        self.llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+
+        self.llm = ChatOpenAI(temperature=0, model=os.getenv("MODEL_OPENAI_ID"))
         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        self.prompt_template = PromptTemplate(template="""
-        Eres un asistente virtual que ayuda a responder preguntas sobre un discurso.
-        
-        Usa informacion general UNICAMENTE si esta en linea con la tematica y los puntos que aborda el discurso y no en otro escenario.
-        
-        Si la pregunta no está relacionada con el discurso o no tienes informacion sobre la tematica, debes responder: "Lo siento, no puedo responder a esa pregunta ya que no está relacionada con el discurso o no tengo información suficiente en el contexto proporcionado."
-    
-        Contexto: {context}
-                        
-        Pregunta del humano: {question} """,
-           input_variables=["context", "chat_history", "question"]
+        self.prompt_template = PromptTemplate(
+            template="""
+Eres un fact-checker que está revisando un discurso político. Usa la información proporcionada y tu conocimiento general para responder la pregunta del usuario.
+
+Contexto adicional relevante:
+{context}
+
+Pregunta: 
+{question}
+
+El discurso completo es el siguiente:
+- **Discurso:** {speech}
+
+- **Historial de la conversación:** {chat_history}
+            """,
+            input_variables=["context", "speech", "chat_history", "question"]
         )
-        self.vectorstore = None
-        self.qa_chain = None
+        self.speech = None
 
-    def cargar_discurso(self, discurso):
-        textos = self.text_splitter.split_text(discurso)
+        try:
+            # Inicializar Pinecone
+            pc = PineconeClient(api_key=os.environ.get("PINECONE_API_KEY"))
+            self.index_name = os.environ.get("INDEX_NAME")
 
-        self.vectorstore = Chroma.from_texts(collection_name='DISCURSO_DB',texts=textos, embedding=self.embeddings,persist_directory=DB_PATH)
+            # Inicializar el vectorstore con el índice existente
+            embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+            self.vectorstore = Pinecone.from_existing_index(self.index_name, embeddings)
+            logger.info(f"Pinecone index '{self.index_name}' connected successfully.")
+        except Exception as e:
+            logger.error(f"Error initializing Pinecone: {e}")
+            raise
 
-        retriever = self.vectorstore.as_retriever()
-        self.qa_chain = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            chain_type="stuff",
-            retriever=retriever,
-            memory=self.memory,
-            chain_type_kwargs={
-                "prompt": self.prompt_template
-            }
-        )
+    def cargar_discurso(self, discurso, sobrescribir=False):
+        if self.speech and not sobrescribir:
+            return "Ya existe un discurso cargado. Utiliza sobrescribir=True para reemplazarlo."
+        self.speech = discurso
+        return "Discurso cargado exitosamente."
 
     def responder_pregunta(self, pregunta):
-        if not self.qa_chain:
+        if not self.speech:
             return "Por favor, carga primero el discurso."
-        respuesta = self.qa_chain({"query": pregunta})
-        return respuesta['result']
+
+        chat_history = self.memory.load_memory_variables({})["chat_history"]
+
+        try:
+            # Realizar la búsqueda de contexto relevante en Pinecone
+            docs = self.vectorstore.similarity_search(pregunta, k=10)
+
+            logger.info(f"Retrieved {len(docs)} documents from Pinecone")
+
+            # Imprimir los documentos extraídos para depuración
+            print("\n--- Documentos extraídos de Pinecone ---")
+            for i, doc in enumerate(docs, 1):
+                print(f"Documento {i}:")
+                if hasattr(doc, 'page_content'):
+                    print(f"Contenido: {doc.page_content[:200]}...")  # Primeros 200 caracteres
+                elif 'text' in doc.metadata:
+                    print(f"Contenido (de metadata): {doc.metadata['text'][:200]}...")
+                else:
+                    print("Documento no tiene contenido textual")
+                print(f"Metadatos: {doc.metadata if hasattr(doc, 'metadata') else 'No metadata'}")
+                print("---")
+
+            # Extraer el contenido de texto de los documentos
+            context = "\n".join([
+                doc.page_content if hasattr(doc, 'page_content')
+                else doc.metadata.get('text', '') if hasattr(doc, 'metadata')
+                else ''
+                for doc in docs
+            ])
+
+            if not context.strip():
+                logger.warning("No se pudo extraer contenido de los documentos")
+                context = "No se pudo recuperar contexto relevante."
+
+        except Exception as e:
+            logger.error(f"Error retrieving documents from Pinecone: {e}")
+            context = "Error retrieving context."
+
+        prompt = self.prompt_template.format(
+            context=context,
+            speech=self.speech,
+            chat_history=chat_history,
+            question=pregunta
+        )
+
+        respuesta = self.llm.predict(prompt)
+
+        # Actualizar la memoria con la pregunta y respuesta
+        self.memory.save_context({"input": pregunta}, {"output": respuesta})
+
+        return respuesta
 
     def cerrar_sesion(self):
-        self.vectorstore.delete_collection()
-        self.vectorstore = None
-        self.qa_chain = None
+        self.speech = None
         self.memory.clear()
-
-

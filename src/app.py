@@ -114,7 +114,7 @@ def main():
                     st.session_state.text = transcribe_audio(audio_file)
                 st.session_state.page = 'analysis'
                 st.rerun()
-        if st.button("Volver al Inicio"):
+        if st.button("Volver al Inicio", key="main_home"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
@@ -128,7 +128,7 @@ def main():
         if st.button("Analizar"):
             st.session_state.page = 'analysis'
             st.rerun()
-        if st.button("Volver al Inicio"):
+        if st.button("Volver al Inicio", key="main_home"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
@@ -179,16 +179,15 @@ def main():
             st.plotly_chart(ideas_staked_fig)
             # st.write(st.session_state.sentiment_analysis)
 
-
         elif analysis_section == 'Chatbot IA':
             st.subheader("Chatbot IA")
 
+            # Inicializar el chatbot si no existe en el estado de sesión
             if 'chatbot' not in st.session_state:
                 st.session_state.chatbot = RAGChatbot()
 
-
             # Cargar el discurso en el chatbot si aún no se ha hecho
-            if ('chatbot_loaded' not in st.session_state) or (not st.session_state.chatbot_loaded):
+            if 'chatbot_loaded' not in st.session_state or not st.session_state.chatbot_loaded:
                 with st.spinner("Cargando el discurso en el chatbot..."):
                     st.session_state.chatbot.cargar_discurso(st.session_state.text)
                     st.session_state.chatbot_loaded = True
@@ -215,8 +214,16 @@ def main():
                 with st.chat_message("assistant"):
                     with st.spinner("Generando respuesta..."):
                         try:
+                            # Obtener la respuesta del chatbot
                             response = st.session_state.chatbot.responder_pregunta(user_question)
+
+                            # Asegurarse de que la respuesta es una cadena
+                            if not isinstance(response, str):
+                                response = str(response)
+
+                            # Mostrar la respuesta
                             st.markdown(response)
+
                             # Añadir la respuesta del chatbot al historial
                             st.session_state.messages.append({"role": "assistant", "content": response})
                         except Exception as e:
@@ -225,11 +232,11 @@ def main():
             # Botón para reiniciar la conversación
             if st.button("Reiniciar conversación"):
                 st.session_state.messages = []
-                # chatbot.cerrar_sesion()
-                # st.session_state.chatbot_loaded = False
+                st.session_state.chatbot.cerrar_sesion()  # Limpiar la sesión del chatbot
+                st.session_state.chatbot_loaded = False
                 st.experimental_rerun()
 
-        if st.sidebar.button("Volver al Inicio"):
+        if st.sidebar.button("Volver al Inicio", key="sidebar_home"):
             st.session_state.page = 'home'
             st.session_state.text = ''
             st.session_state.analysis = None
